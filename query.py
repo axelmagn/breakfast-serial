@@ -19,15 +19,17 @@ class CacheQuerySet(QuerySet):
     """
     def __init__(self, models=None, query=None, using=None, 
                  cache=DEFAULT_CACHE, timeout=30):
-        super(ExtQuerySet, self).__init__(self, models, query, using)
+        super(CacheQuerySet, self).__init__(models, query, using)
         self.cache = cache
         self.timeout = timeout
+
     def _cache_key(self, obj):
         """construct the cache key of an appropriate object"""
         # use color separator, as it's an illegal character in class name
-        ct = ContentType.objects.get_for_model(obj)
+        ct = ContentType.objects.get_for_model(self.model)
         return "%s,%s,%s" % (ct.app_name, ct.name, obj.pk)
-    def cache_add(self, obj, timeout=None):
+
+    def cache_add(self, obj, timeout=None, passive=False):
         """store an object in the cache for later retrieval"""
         # make sure object is the correct type
         if not isinstance(obj, self.model):
@@ -38,5 +40,36 @@ class CacheQuerySet(QuerySet):
         cached_obj = self.cache.get(key, None)
         if cached_obj:
             # merge cached object into object
-            obj = merge_objects(obj, cached_obj)
+            if  passive:
+                obj = merge_objects(cached_obj, obj)
+            else:
+                obj = merge_objects(obj, cached_obj)
+        # make sure that db and cache match
+        obj.save()
+        # cache pickled object
         self.cache.set(key, obj, timeout)
+
+    def _cache_get(self, obj, passive=False):
+        """retrieve object from cache, if any, and merge data"""
+        if not isinstance(obj, self.model):
+            raise TypeError("%s is not a model in this QuerySet." % obj)
+        key = self._cached_key(obj)
+        cached_obj = self.cache.get(key, None)
+        if cached_obj:
+            if passive:
+                return merge_objects(cached_obj, obj)
+            else:
+                return merge_objects(obj, cached_obj)
+        return obj
+
+    def __getitem__(self, k):
+        """
+        Retrieves an item or slice from the set of results, and merges it with
+        any cached results
+
+        """
+        out = super(CacheQuerySet, self).__getitem__(k)
+        if isinstance(out, list):
+            return [self.cache_get(obj) for obj in out]
+        else:
+            return self.cache_get(out)
