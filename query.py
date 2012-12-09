@@ -8,7 +8,7 @@ from django.db.models.query import QuerySet
 from bserial.settings import DEFAULT_CACHE
 from bserial.util import merge_objects
 
-class ExtQuerySet(QuerySet):
+class CacheQuerySet(QuerySet):
     """
     Query set for a model that relies on external api calls as well.
 
