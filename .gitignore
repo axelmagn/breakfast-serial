@@ -1,0 +1,12 @@
+# virtualenv packages
+venv
+site-packages
+
+# Compiled python
+*.pyc
+
+# pip build
+build
+
+# vim swaps
+*.swp
