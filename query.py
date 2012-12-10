@@ -17,9 +17,9 @@ class CacheQuerySet(QuerySet):
     retrieve them.
 
     """
-    def __init__(self, models=None, query=None, using=None, 
+    def __init__(self, model=None, query=None, using=None, 
                  cache=DEFAULT_CACHE, timeout=30):
-        super(CacheQuerySet, self).__init__(models, query, using)
+        super(CacheQuerySet, self).__init__(model, query, using)
         self.cache = cache
         self.timeout = timeout
 
@@ -27,7 +27,7 @@ class CacheQuerySet(QuerySet):
         """construct the cache key of an appropriate object"""
         # use color separator, as it's an illegal character in class name
         ct = ContentType.objects.get_for_model(self.model)
-        return "%s,%s,%s" % (ct.app_name, ct.name, obj.pk)
+        return "%s,%s,%s" % (ct.app_label, ct.name, obj.pk)
 
     def cache_add(self, obj, timeout=None, passive=False):
         """store an object in the cache for later retrieval"""
@@ -51,9 +51,7 @@ class CacheQuerySet(QuerySet):
 
     def _cache_get(self, obj, passive=False):
         """retrieve object from cache, if any, and merge data"""
-        if not isinstance(obj, self.model):
-            raise TypeError("%s is not a model in this QuerySet." % obj)
-        key = self._cached_key(obj)
+        key = self._cache_key(obj)
         cached_obj = self.cache.get(key, None)
         if cached_obj:
             if passive:
@@ -70,6 +68,6 @@ class CacheQuerySet(QuerySet):
         """
         out = super(CacheQuerySet, self).__getitem__(k)
         if isinstance(out, list):
-            return [self.cache_get(obj) for obj in out]
+            return [self._cache_get(obj) for obj in out]
         else:
-            return self.cache_get(out)
+            return self._cache_get(out)
