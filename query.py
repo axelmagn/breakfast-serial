@@ -69,5 +69,6 @@ class CacheQuerySet(QuerySet):
         out = super(CacheQuerySet, self).__getitem__(k)
         if isinstance(out, list):
             return [self._cache_get(obj) for obj in out]
-        else:
+        elif isinstance(out, self.model):
             return self._cache_get(out)
+        return out
