@@ -7,9 +7,10 @@ from copy import deepcopy
 
 def merge_objects(*args):
     """
-    Take a list of objects and merge their attributes.  Objects listed first
-    take precedence over objects listed after.  All objects must be the same 
-    type.
+    Take a list of objects and merge their attributes.
+
+    Objects listed first take precedence over objects listed after.  All
+    objects must be the same type.
 
     """
     if len(args) < 2:
@@ -25,6 +26,4 @@ def merge_objects(*args):
                     not hasattr(tgt, property)):
                 setattr(tgt, property, getattr(src, property))
     return tgt
-
-
 
