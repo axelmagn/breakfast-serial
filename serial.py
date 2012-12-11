@@ -1,6 +1,12 @@
 # 3rd party imports
 from lxml import etree
+from bottlenose import Amazon
+# local imports
+from bserial.settings import (AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY,
+                               AMAZON_ASSOC_TAG)
 
+def _amazon():
+    return Amazon(AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY, AMAZON_ASSOC_TAG)
 
 class XMLInterface(object):
     """
@@ -13,8 +19,7 @@ class XMLInterface(object):
     model = None
     item_root = etree.XPath("/")
 
-    def __init__(self, xml_data):
-        self.xml = xml_data
+    def __init__(self, *args, **kwargs):
         # translate class attributes to instance attributes if they are xpaths
         for key, value in enumerate(self.__class__.__dict__):
             if isinstance(value, etree.XPath):
@@ -63,4 +68,19 @@ class XMLInterface(object):
             raise ValueError("attribute %s of %s is not an XPath" % (key,
                                                                      self))
         return val
+
+
+def AmazonBookInterface(XMLInterface):
+    """
+    Amazon Book interface that uses bottlenose to query amazon product api
+
+    """
+    model = Book
+    def __init__(self,  *args, **kwargs):
+        method = kwargs.pop('method', 'lookup').lower()
+        if method == 'lookup':
+            self.xml = _amazon().ItemLookup(**kwargs)
+        elif method == 'search':
+            self.xml = _amazon().ItemSearch(**kwargs)
+        super(AmazonBookInterface, self).__init__()
 
