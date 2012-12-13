@@ -90,6 +90,9 @@ class XMLInterface(object):
         """
         for item in self.item_root(self.xml):
             yield self.parse_model(item)
+    
+    def __getitem__(self, k):
+        return self.parse_models()[k]
 
 
 class AmazonBookInterface(XMLInterface):
@@ -98,8 +101,10 @@ class AmazonBookInterface(XMLInterface):
 
     """
     model = Book
-    item_root = etree.XPath("Items/Item")
-    title = "ItemAttributes/Title"
+    item_root   =   etree.XPath("Items/Item")
+    asin        =   "ASIN"
+    title       =   "ItemAttributes/Title"
+    author      =   "ItemAttributes/Author"
 
     def __init__(self,  *args, **kwargs):
         super(AmazonBookInterface, self).__init__()
