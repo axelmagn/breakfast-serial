@@ -2,6 +2,7 @@
 from lxml import etree
 from bottlenose import Amazon
 # local imports
+from bserial.models import Book
 from bserial.settings import (AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY,
                                AMAZON_ASSOC_TAG)
 
@@ -21,11 +22,13 @@ class XMLInterface(object):
 
     def __init__(self, *args, **kwargs):
         # translate class attributes to instance attributes if they are xpaths
-        for key, value in enumerate(self.__class__.__dict__):
-            if isinstance(value, etree.XPath):
-                setattr(self, key, value)
-            elif isinstance(value, str) or isinstance(value, unicode):
-                setattr(self, key, etree.XPath(value))
+        for key in self.__class__.__dict__:
+            if not key.startswith('_'):
+                value = self.__class__[key]
+                if isinstance(value, etree.XPath):
+                    setattr(self, key, value)
+                elif isinstance(value, str) or isinstance(value, unicode):
+                    setattr(self, key, etree.XPath(value))
 
     def _get_xpath_attrs(self):
         """Return all interface attributes that are XPaths"""
@@ -70,7 +73,7 @@ class XMLInterface(object):
         return val
 
 
-def AmazonBookInterface(XMLInterface):
+class AmazonBookInterface(XMLInterface):
     """
     Amazon Book interface that uses bottlenose to query amazon product api
 
