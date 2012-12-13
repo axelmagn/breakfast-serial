@@ -42,7 +42,7 @@ class XMLInterface(object):
 
     """
     model = None
-    item_root = etree.XPath("/")
+    item_root = etree.XPath("/*")
     _remove_ns_transform = etree.XSLT(etree.fromstring(_REMOVE_NS_XSLT))
 
     def __init__(self, *args, **kwargs):
@@ -74,11 +74,14 @@ class XMLInterface(object):
         for key in attrs:
             result = attrs[key](xml)
             if result:
-                setattr(out, result[0])
+                setattr(out, key, result[0].text)
         return out
 
     def parse_models(self):
-        return list(self.__iter__)
+        return list(self.__iter__())
+
+    def tostring(self):
+        return etree.tostring(self.xml, pretty_print=True)
 
     def __iter__(self):
         """
@@ -88,17 +91,6 @@ class XMLInterface(object):
         for item in self.item_root(self.xml):
             yield self.parse_model(item)
 
-    def __getitem__(self, key):
-        if not (isinstance(key, str) or isinstance(key, unicode)):
-            raise TypeError("key %s is not a string" % key)
-        if not hasattr(self, key):
-            raise ValueError("%s has no attribute for key %s" % (self, key))
-        val = getattr(self, key)
-        if not isinstance(val, etree.XPath):
-            raise ValueError("attribute %s of %s is not an XPath" % (key,
-                                                                     self))
-        return val
-
 
 class AmazonBookInterface(XMLInterface):
     """
@@ -106,16 +98,15 @@ class AmazonBookInterface(XMLInterface):
 
     """
     model = Book
+    item_root = etree.XPath("Items/Item")
+    title = "ItemAttributes/Title"
+
     def __init__(self,  *args, **kwargs):
         super(AmazonBookInterface, self).__init__()
-        if args:
-            param = args[0]
         method = kwargs.pop('method', 'lookup').lower()
         if method == 'lookup':
-            kwargs["ItemId"] = param
             self.xml = _amazon().ItemLookup(**kwargs)
         elif method == 'search':
-            kwargs["Keywords"] = param
             self.xml = _amazon().ItemSearch(**kwargs)
         # convert string to XML, stripping namespaces
         self.xml = self._remove_ns_transform(etree.fromstring(self.xml))
