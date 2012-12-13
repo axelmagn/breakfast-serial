@@ -26,4 +26,3 @@ def merge_objects(*args):
                     not hasattr(tgt, property)):
                 setattr(tgt, property, getattr(src, property))
     return tgt
-

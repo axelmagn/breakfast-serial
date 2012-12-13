@@ -6,6 +6,30 @@ from bserial.models import Book
 from bserial.settings import (AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY,
                                AMAZON_ASSOC_TAG)
 
+_REMOVE_NS_XSLT = """
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+<xsl:output method="xml" indent="no"/>
+
+<xsl:template match="/|comment()|processing-instruction()">
+    <xsl:copy>
+      <xsl:apply-templates/>
+    </xsl:copy>
+</xsl:template>
+
+<xsl:template match="*">
+    <xsl:element name="{local-name()}">
+      <xsl:apply-templates select="@*|node()"/>
+    </xsl:element>
+</xsl:template>
+
+<xsl:template match="@*">
+    <xsl:attribute name="{local-name()}">
+      <xsl:value-of select="."/>
+    </xsl:attribute>
+</xsl:template>
+</xsl:stylesheet>
+"""
+
 def _amazon():
     return Amazon(AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY, AMAZON_ASSOC_TAG)
 
@@ -19,12 +43,15 @@ class XMLInterface(object):
     """
     model = None
     item_root = etree.XPath("/")
+    _remove_ns_transform = etree.XSLT(etree.fromstring(_REMOVE_NS_XSLT))
 
     def __init__(self, *args, **kwargs):
         # translate class attributes to instance attributes if they are xpaths
+        if args:
+            self.xml = args[0]
         for key in self.__class__.__dict__:
             if not key.startswith('_'):
-                value = self.__class__[key]
+                value = self.__class__.__dict__[key]
                 if isinstance(value, etree.XPath):
                     setattr(self, key, value)
                 elif isinstance(value, str) or isinstance(value, unicode):
@@ -80,10 +107,16 @@ class AmazonBookInterface(XMLInterface):
     """
     model = Book
     def __init__(self,  *args, **kwargs):
+        super(AmazonBookInterface, self).__init__()
+        if args:
+            param = args[0]
         method = kwargs.pop('method', 'lookup').lower()
         if method == 'lookup':
+            kwargs["ItemId"] = param
             self.xml = _amazon().ItemLookup(**kwargs)
         elif method == 'search':
+            kwargs["Keywords"] = param
             self.xml = _amazon().ItemSearch(**kwargs)
-        super(AmazonBookInterface, self).__init__()
+        # convert string to XML, stripping namespaces
+        self.xml = self._remove_ns_transform(etree.fromstring(self.xml))
 
