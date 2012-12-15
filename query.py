@@ -72,3 +72,12 @@ class CacheQuerySet(QuerySet):
         elif isinstance(out, self.model):
             return self._cache_get(out)
         return out
+    
+class AmazonQuerySet(CacheQuerySet):
+    """
+    QuerySet that can retrieve items from amazon api
+
+    """
+    pass
+
+
