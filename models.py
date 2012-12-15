@@ -7,9 +7,12 @@ from bserial.manager import CacheManager
 
 class CacheModel(models.Model):
     objects = CacheManager()
+    """
+    # TODO: cannot access manager from within model.  bugfix.
     def save(self):
         super(CacheModel, self).save()
         self.objects.cache_add(self)
+    """
 
 class Book(CacheModel):
     """
@@ -23,6 +26,6 @@ class Book(CacheModel):
     def __unicode__(self):
         return "%s%s" % (
                 self.title if self.title else self.asin,
-                " by %s" if self.author else ""
+                " by " + self.author if self.author else ""
         )
 
