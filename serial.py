@@ -69,12 +69,22 @@ class XMLInterface(object):
         Return an instance of self.model that maps data to model attributes
 
         """
-        out = self.model()
+        # identify unique fields
+        unique_fields = [field.name for field in self.model._meta.fields
+                         if field.unique]
+        # retrieve those fields
         attrs = self._get_xpath_attrs()
+        kwargs = {key: attrs[key](xml)[0].text for key in attrs 
+                  if key in unique_fields}
+        # get_or_create new model from those fields
+        # import pdb; pdb.set_trace() #DEBUG
+        out = self.model.objects.get_or_create(**kwargs)[0]
+        # fill in remaining attributes
         for key in attrs:
-            result = attrs[key](xml)
-            if result:
-                setattr(out, key, result[0].text)
+            if key not in unique_fields:
+                result = attrs[key](xml)
+                if result:
+                    setattr(out, key, result[0].text)
         return out
 
     def parse_models(self):
