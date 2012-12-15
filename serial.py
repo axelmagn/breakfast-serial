@@ -110,8 +110,23 @@ class AmazonBookInterface(XMLInterface):
         super(AmazonBookInterface, self).__init__()
         method = kwargs.pop('method', 'lookup').lower()
         if method == 'lookup':
+            if args:
+                item_id = kwargs.get("ItemId", None)
+                if not item_id:
+                    kwargs["ItemId"] = args[0]
+                else:
+                    raise ValueError("Cannot supply both args and ItemId " +
+                                     "kwargs argument")
             self.xml = _amazon().ItemLookup(**kwargs)
         elif method == 'search':
+            if args:
+                keywords = kwargs.get("Keywords", None)
+                if not keywords:
+                    kwargs["Keywords"] = args[0]
+                else:
+                    raise ValueError("Cannot supply both args and Keywords " +
+                                     "kwargs argument")
+            kwargs['SearchIndex'] = kwargs.get('SearchIndex', 'Books')
             self.xml = _amazon().ItemSearch(**kwargs)
         # convert string to XML, stripping namespaces
         self.xml = self._remove_ns_transform(etree.fromstring(self.xml))
