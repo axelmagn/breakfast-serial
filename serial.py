@@ -1,7 +1,7 @@
 # 3rd party imports
-from lxml import etree
-import xpath
 from bottlenose import Amazon
+from xml.dom.minidom import parseString
+import xpath
 # local imports
 from bserial.models import Book
 from bserial.settings import (AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY,
@@ -47,8 +47,14 @@ class XMLMapping(object):
         """
         return selection
 
+    def __repr__(self):
+        return "<%s: %s>" % (self.__class__, self.__unicode__())
+
     def __unicode__(self):
         return self.selector
+
+
+
 
 class NodeMapping(XMLMapping):
     """
@@ -59,6 +65,8 @@ class NodeMapping(XMLMapping):
         return xpath.findnode(self.selector, node)
 
 
+
+
 class ValueMapping(XMLMapping):
     """
     force xpath selector to return values using xpath.findvalue()
@@ -66,6 +74,31 @@ class ValueMapping(XMLMapping):
     """
     def parse(self, node):
         return xpath.findvalue(self.selector, node)
+
+
+class BooleanMapping(XMLMapping):
+    """Interprets value as boolean"""
+    def parse(self, node):
+        selection = xpath.findvalue(self.selector, node)
+        return selection.lower() in ["true", "1", 'yes', 'y']
+
+
+class MultiValueMapping(XMLMapping):
+    """
+    value mapping for every element returned by selector
+
+    """
+    valmap = ValueMapping("self::*")
+
+    def parse_selection(self, selection):
+        return [self.valmap.parse(el) for el in selection]
+
+def CSVMapping(MultiValueMapping):
+    """Return list of values as comma separated string"""
+
+    def parse_selection(self, selection):
+        return ",".join(super(CSVMapping, self).parse_selection(selection))
+
 
 
 
@@ -142,7 +175,7 @@ class XMLInterface(object):
         return {
                 attr: selector for attr, selector in
                 [(attr, getattr(self, attr)) for attr in self.__dict__]
-                if isinstance(selector, XMLMapping)
+                if isinstance(selector, XMLMapping) and attr != "item_root"
         }
 
 
@@ -172,6 +205,7 @@ class XMLInterface(object):
                     setattr(self, key, result)
         return out
 
+
     def parse(self, doc):
         out = []
         # iterate through items as defined by item_root
@@ -188,18 +222,92 @@ class AmazonBookInterface(XMLInterface):
 
     """
 
+    model       = Book
+    item_root   = XMLMapping("/*/Items/Item")
+    map_default = ValueMapping
+
+    # defaults
+    _search_index = "KindleStore"
+    _method = "lookup"
+    _is_valid = BooleanMapping("/*/Items/Request/IsValid")
+    _error_code = ValueMapping("/*/Items/Request/Errors/Error/Code")
+    _error_msg = ValueMapping("/*/Items/Request/Errors/Error/Message")
+
+    asin = "ASIN"
+    title = "ItemAttributes/Title"
+    author = CSVMapping("ItemAttributes/Author")
+
+
     def parse(self, *args, **kwargs):
-        pass
+        doc = parseString(self._get_response(*args, **kwargs))
+        is_valid = self._is_valid.parse(doc)
+        if not is_valid:
+            code = self._error_code.parse(doc)
+            msg = self._error_msg.parse(doc)
+            raise RuntimeError("Amazon Errror %s: %s" % (code, msg))
+        import pdb; pdb.set_trace()     # DEBUG
+        return super(AmazonBookInterface, self).parse(doc)
+
+
 
     def _get_response(self, *args, **kwargs):
-        """Query amazon for xml response"""
-        pass
+        """
+        Query amazon for xml response
+        
+        Keywords:
+        ---------
+        method(string)=lookup       what sort of query to send to amazon
 
-    def _get_item_lookup(self, **kwargs):
-        """Query amazon for item lookup"""
-        pass
+        """
+        method = kwargs.pop("method", self._method).lower()
+        if method == 'lookup':
+            return self._item_lookup_response(*args, **kwargs)
+        if method == 'search':
+            return self._item_search_response(*args, **kwargs)
+        raise ValueError("Unknown mehod Keyword: %s" % method)
 
-    def _get_item_search(self, **kwargs):
-        """Query amazon for item search"""
-        pass
+    def _item_lookup_response(self, *args, **kwargs):
+        """
+        Query amazon for item lookup
+        
+        Arguments:
+        ----------
+        0   ItemId(s)       csv string of item id(s)
+
+        kwargs are fed directly into bottlenose
+
+        """
+        if args:
+            # make sure kwargs[ItemId] is empty before storing new value
+            item_id = kwargs.get("ItemId", None)
+            if item_id is None:
+                kwargs["ItemId"] = args[0]
+            else:
+                raise RuntimeError("Cannot have keyword ItemId AND provide " +
+                                   "an argument")
+        return _amazon().ItemLookup(**kwargs)
+
+
+    def _item_search_response(self, *args, **kwargs):
+        """
+        Query amazon for item search
+        
+        Arguments:
+        ----------
+        0   Keywords    keyword search string
+
+        Keywords are fed directly into bottlenose.
+
+        """
+        kwargs['SearchIndex'] = kwargs.get('SearchIndex', self._search_index)
+        if args:
+            # make sure kwargs[Keywords] is empty before storing new value
+            keywords = kwargs.get("Keywords", None)
+            if keywords is None:
+                kwargs["Keywords"] = args[0]
+            else:
+                raise RuntimeError("Cannot have keyword 'Keywords' AND " +
+                                   "provide an argument")
+        return _amazon().ItemSearch(**kwargs)
+
 
