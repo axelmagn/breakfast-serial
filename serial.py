@@ -25,7 +25,6 @@ class XMLMapping(object):
         """
         convert xml data in doc into a python object and return it.  Raise
         ValueError if the data is not present. (to be caught in most cases)
-        
 
         Selects elements with xpath selector, then retrieves python value from
         parse_selections
@@ -41,7 +40,6 @@ class XMLMapping(object):
         convert a list of dom elements into python object. 
 
         by default, returns selection
-
         override for functionality
 
         """
@@ -245,7 +243,6 @@ class AmazonBookInterface(XMLInterface):
             code = self._error_code.parse(doc)
             msg = self._error_msg.parse(doc)
             raise RuntimeError("Amazon Errror %s: %s" % (code, msg))
-        import pdb; pdb.set_trace()     # DEBUG
         return super(AmazonBookInterface, self).parse(doc)
 
 
