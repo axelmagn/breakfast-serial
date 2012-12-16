@@ -1,143 +1,205 @@
 # 3rd party imports
 from lxml import etree
+import xpath
 from bottlenose import Amazon
 # local imports
 from bserial.models import Book
 from bserial.settings import (AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY,
                                AMAZON_ASSOC_TAG)
 
-_REMOVE_NS_XSLT = """
-<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-<xsl:output method="xml" indent="no"/>
-
-<xsl:template match="/|comment()|processing-instruction()">
-    <xsl:copy>
-      <xsl:apply-templates/>
-    </xsl:copy>
-</xsl:template>
-
-<xsl:template match="*">
-    <xsl:element name="{local-name()}">
-      <xsl:apply-templates select="@*|node()"/>
-    </xsl:element>
-</xsl:template>
-
-<xsl:template match="@*">
-    <xsl:attribute name="{local-name()}">
-      <xsl:value-of select="."/>
-    </xsl:attribute>
-</xsl:template>
-</xsl:stylesheet>
-"""
-
 def _amazon():
     return Amazon(AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY, AMAZON_ASSOC_TAG)
 
+class XMLMapping(object):
+    """
+    XMLMapping class for mapping XML data to python objects for use in 
+    populating model attributes
+
+    """
+    def __init__(self, selector):
+        """Set up new XML Mapping"""
+        super(XMLMapping, self).__init__()
+        self.selector = selector
+
+    def parse(self, node):
+        """
+        convert xml data in doc into a python object and return it.  Raise
+        ValueError if the data is not present. (to be caught in most cases)
+        
+
+        Selects elements with xpath selector, then retrieves python value from
+        parse_selections
+
+        """
+        # retrieve xpath selection
+        selection = xpath.find(self.selector, node)
+        # feed into parse_selection before returning
+        return self.parse_selection(selection)
+
+    def parse_selection(self, selection):
+        """
+        convert a list of dom elements into python object. 
+
+        by default, returns selection
+
+        override for functionality
+
+        """
+        return selection
+
+    def __unicode__(self):
+        return self.selector
+
+class NodeMapping(XMLMapping):
+    """
+    force xpath selector to return a single node using xpath.findnode()
+
+    """
+    def parse(self, node):
+        return xpath.findnode(self.selector, node)
+
+
+class ValueMapping(XMLMapping):
+    """
+    force xpath selector to return values using xpath.findvalue()
+
+    """
+    def parse(self, node):
+        return xpath.findvalue(self.selector, node)
+
+
+
 class XMLInterface(object):
     """
-    Associate a model with XML data.
-
-    XPath attributes are used to generate models with attributes read from XML
-    data.
+    XMLInterface can map xml documents to lists of model instances
 
     """
-    model = None
-    item_root = etree.XPath("/*")
-    _remove_ns_transform = etree.XSLT(etree.fromstring(_REMOVE_NS_XSLT))
 
     def __init__(self, *args, **kwargs):
-        # translate class attributes to instance attributes if they are xpaths
-        if args:
-            self.xml = args[0]
-        for key in self.__class__.__dict__:
-            if not key.startswith('_'):
-                value = self.__class__.__dict__[key]
-                if isinstance(value, etree.XPath):
-                    setattr(self, key, value)
-                elif isinstance(value, str) or isinstance(value, unicode):
-                    setattr(self, key, etree.XPath(value))
+        """
+        Set up new XML interface objects
 
-    def _get_xpath_attrs(self):
-        """Return all interface attributes that are XPaths"""
+        Arguments:
+        ----------
+
+        Keywords:
+        ---------
+        model(class)=None        the model to translate into
+        item_root(selector)="/"  selector for individual items
+        map_strings(bool)=True   treat class strings as selectors
+        map_default(class)=True  class to use for string selectors
+
+
+        """
+
+        # parse class definitions, using sane defaults
+        self.model          = getattr(self, "model", None)
+        self.item_root      = getattr(self, "item_root", XMLMapping("/"))
+        self.map_strings    = getattr(self, "map_strings", True)
+        self.map_default    = getattr(self, "map_default", XMLMapping)
+
+        # override with init kwargs if present
+        self.model          = kwargs.get("model", self.model)
+        self.item_root      = kwargs.get("item_root", self.item_root)
+        self.map_strings    = kwargs.get("map_strings", self.map_strings)
+        self.map_default    = kwargs.get("map_default", self.map_default)
+
+
+        accepted_selectors = [XMLMapping] # includes subclasses
+        if self.map_strings:
+            accepted_selectors += [str, unicode]
+
+        class_dict = self.__class__.__dict__
+        for key in class_dict:
+            # don't map private attrs
+            if not key.startswith('_'):
+                value = class_dict[key]
+                if self._is_valid_selector(value, accepted_selectors):
+                    self.set_map(key, value)
+
+
+    def _is_valid_selector(self, selector, accepted_types):
+        return True in [isinstance(selector, t) for t in accepted_types]
+
+
+    def set_map(self, key, selector):
+        """Store a selector as an XMLMapping attribute"""
+        # translate strings into instance XMLMapping attributes
+        if isinstance(selector, str) or isinstance(selector, unicode):
+            selector = self.map_default(selector)
+            setattr(self, key, selector)
+            return
+        # translate XMLMappings into instance attributes
+        elif isinstance(selector, XMLMapping):
+            setattr(self, key, selector)
+            return
+        raise TypeError("Unrecognized Selector %s of type %s" % 
+                        (selector, type(selector)))
+
+
+    def get_maps(self):
+        """Return all XMLMappings to be used in translation"""
         return {
-                attr: getattr(self, attr) for attr in self.__dict__
-                if isinstance(getattr(self, attr), etree.XPath)
+                attr: selector for attr, selector in
+                [(attr, getattr(self, attr)) for attr in self.__dict__]
+                if isinstance(selector, XMLMapping)
         }
 
-    def parse_model(self, xml):
+
+    def parse_model(self, doc):
         """
-        Return an instance of self.model that maps data to model attributes
+        Parse a model from a doc that represent exactly one item
+
+        doc should typically be an element selected by item_root
 
         """
-        # identify unique fields
+        # identify unique fields in the model
         unique_fields = [field.name for field in self.model._meta.fields
                          if field.unique]
-        # retrieve those fields
-        attrs = self._get_xpath_attrs()
-        kwargs = {key: attrs[key](xml)[0].text for key in attrs 
-                  if key in unique_fields}
-        # get_or_create new model from those fields
-        # import pdb; pdb.set_trace() #DEBUG
-        out = self.model.objects.get_or_create(**kwargs)[0]
+        # retrieve those fields first from doc
+        attrs = self.get_maps()
+        init_kwargs = {key: attrs[key].parse(doc) for key in attrs 
+                       if key in unique_fields}
+        # get_or_create new model from unique fields
+        out, is_created = self.model.objects.get_or_create(**init_kwargs)
         # fill in remaining attributes
         for key in attrs:
             if key not in unique_fields:
-                result = attrs[key](xml)
-                if result:
-                    setattr(out, key, result[0].text)
+                # retrieve python object from parsed selector
+                result = attrs[key].parse(doc)
+                # omit empty results, but include False values
+                if result not in[None, [], '']:
+                    setattr(self, key, result)
         return out
 
-    def parse_models(self):
-        return list(self.__iter__())
-
-    def tostring(self):
-        return etree.tostring(self.xml, pretty_print=True)
-
-    def __iter__(self):
-        """
-        Iterate through self.xml, yielding populated models
-
-        """
-        for item in self.item_root(self.xml):
-            yield self.parse_model(item)
-    
-    def __getitem__(self, k):
-        return self.parse_models()[k]
+    def parse(self, doc):
+        out = []
+        # iterate through items as defined by item_root
+        for item in self.item_root.parse(doc):
+            # parse model for item element
+            out.append(self.parse_model(item))
+        return out
 
 
 class AmazonBookInterface(XMLInterface):
     """
-    Amazon Book interface that uses bottlenose to query amazon product api
+    AmazonBookInterface queries Amazon Product API via bottlenose and converts
+    the response into book objects.
 
     """
-    model = Book
-    item_root   =   etree.XPath("Items/Item")
-    asin        =   "ASIN"
-    title       =   "ItemAttributes/Title"
-    author      =   "ItemAttributes/Author"
 
-    def __init__(self,  *args, **kwargs):
-        super(AmazonBookInterface, self).__init__()
-        method = kwargs.pop('method', 'lookup').lower()
-        if method == 'lookup':
-            if args:
-                item_id = kwargs.get("ItemId", None)
-                if not item_id:
-                    kwargs["ItemId"] = args[0]
-                else:
-                    raise ValueError("Cannot supply both args and ItemId " +
-                                     "kwargs argument")
-            self.xml = _amazon().ItemLookup(**kwargs)
-        elif method == 'search':
-            if args:
-                keywords = kwargs.get("Keywords", None)
-                if not keywords:
-                    kwargs["Keywords"] = args[0]
-                else:
-                    raise ValueError("Cannot supply both args and Keywords " +
-                                     "kwargs argument")
-            kwargs['SearchIndex'] = kwargs.get('SearchIndex', 'Books')
-            self.xml = _amazon().ItemSearch(**kwargs)
-        # convert string to XML, stripping namespaces
-        self.xml = self._remove_ns_transform(etree.fromstring(self.xml))
+    def parse(self, *args, **kwargs):
+        pass
+
+    def _get_response(self, *args, **kwargs):
+        """Query amazon for xml response"""
+        pass
+
+    def _get_item_lookup(self, **kwargs):
+        """Query amazon for item lookup"""
+        pass
+
+    def _get_item_search(self, **kwargs):
+        """Query amazon for item search"""
+        pass
 
