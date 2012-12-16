@@ -91,11 +91,45 @@ class MultiValueMapping(XMLMapping):
     def parse_selection(self, selection):
         return [self.valmap.parse(el) for el in selection]
 
-def CSVMapping(MultiValueMapping):
+
+class CSVMapping(MultiValueMapping):
     """Return list of values as comma separated string"""
 
     def parse_selection(self, selection):
         return ",".join(super(CSVMapping, self).parse_selection(selection))
+
+
+class DictMapping(XMLMapping):
+    """
+    lazy XML Interface. returns a list of attribute dicts
+
+    Arguments:
+    ----------
+    0       item_root       selector to return list of elements
+    1       attr_dict       for each element, create dict with these attrs
+
+    attr_dict values should all be XMLMappings.
+    output dicts will be the results of these mappings, if present
+
+    """
+
+    def __init__(self, item_root, attr_dict):
+        self.item_root = item_root
+        self.attr_dict = attr_dict
+
+    def parse(self, node):
+        out = []
+        items = self.item_root.parse(node)
+        for item in items:
+            attrs = {}
+            for attr in self.attr_dict:
+                value = self.attr_dict[attr].parse(item)
+                if value not in [None, [], '']:
+                    attrs[attr] = value
+            out.append(attrs)
+        return out
+
+
 
 
 
@@ -231,31 +265,118 @@ class AmazonBookInterface(XMLInterface):
     _error_code = ValueMapping("/*/Items/Request/Errors/Error/Code")
     _error_msg = ValueMapping("/*/Items/Request/Errors/Error/Message")
 
+    # intermediate mappings
+    _img_url        = ValueMapping("URL")
+    _img_height     = ValueMapping("Height")
+    _img_hunits     = ValueMapping("Height/@Units")
+    _img_width      = ValueMapping("Width")
+    _img_wunits     = ValueMapping("Width/@Units")
+    _img_md         = XMLMapping("MediumImage")
+    _img_lg         = XMLMapping("LargeImage")
+
+    # basic attributes
     asin = "ASIN"
     title = "ItemAttributes/Title"
     author = CSVMapping("ItemAttributes/Author")
+    # ResponseGroup:    Images
+    small_image = DictMapping(
+            XMLMapping("SmallImage"),
+            {
+                "url":              _img_url,
+                "height":           _img_height,
+                "height_units":     _img_hunits,
+                "width":            _img_width,
+                "width_units":      _img_wunits,
+            }
+    )
+    medium_image = DictMapping(
+            XMLMapping("MediumImage"),
+            {
+                "url":              _img_url,
+                "height":           _img_height,
+                "height_units":     _img_hunits,
+                "width":            _img_width,
+                "width_units":      _img_wunits,
+            }
+    )
+    large_image = DictMapping(
+            XMLMapping("LargeImage"),
+            {
+                "url":              _img_url,
+                "height":           _img_height,
+                "height_units":     _img_hunits,
+                "width":            _img_width,
+                "width_units":      _img_wunits,
+            }
+    )
+    # ResponseGroup:    EditorialReview
+    description = ValueMapping("EditorialReviews/EditorialReview[1]/Content" +
+                               '[../Source/text() = "Product Description"]'
 
 
     def parse(self, *args, **kwargs):
-        doc = parseString(self._get_response(*args, **kwargs))
-        is_valid = self._is_valid.parse(doc)
-        if not is_valid:
-            code = self._error_code.parse(doc)
-            msg = self._error_msg.parse(doc)
-            raise RuntimeError("Amazon Errror %s: %s" % (code, msg))
-        return super(AmazonBookInterface, self).parse(doc)
-
-
-
-    def _get_response(self, *args, **kwargs):
         """
         Query amazon for xml response
+
+        Arguments:
+        ----------
+        0   ItemId(s)       csv string of item id(s)    if method=lookup
+        0   Keywords        keyword search string       if method=search
+        1   ResponseGroup   amazon api response group
         
         Keywords:
         ---------
         method(string)=lookup       what sort of query to send to amazon
 
         """
+        doc = parseString(self._get_response(*args, **kwargs))
+        self._validate(doc)
+        return super(AmazonBookInterface, self).parse(doc)
+
+
+    def lookup(self, *args, **kwargs):
+        """
+        Query amazon for item lookup
+        
+        Arguments:
+        ----------
+        0   ItemId(s)       csv string of item id(s)
+        1   ResponseGroup   amazon api response group
+
+        kwargs are fed directly into bottlenose
+
+        """
+        doc = parseString(self._item_lookup_response(*args, **kwargs))
+        self._validate(doc)
+        return super(AmazonBookInterface, self).parse(doc)
+
+
+    def search(self, *args, **kwargs):
+        """
+        Query amazon for item search
+        
+        Arguments:
+        ----------
+        0   Keywords    keyword search string
+        1   ResponseGroup   amazon api response group
+
+        Keywords are fed directly into bottlenose.
+
+        """
+        doc = parseString(self._item_search_response(*args, **kwargs))
+        self._validate(doc)
+        return super(AmazonBookInterface, self).parse(doc)
+
+
+    def _validate(self, doc):
+        is_valid = self._is_valid.parse(doc)
+        if not is_valid:
+            code = self._error_code.parse(doc)
+            msg = self._error_msg.parse(doc)
+            raise RuntimeError("Amazon Errror %s: %s" % (code, msg))
+
+
+    def _get_response(self, *args, **kwargs):
         method = kwargs.pop("method", self._method).lower()
         if method == 'lookup':
             return self._item_lookup_response(*args, **kwargs)
@@ -263,17 +384,8 @@ class AmazonBookInterface(XMLInterface):
             return self._item_search_response(*args, **kwargs)
         raise ValueError("Unknown mehod Keyword: %s" % method)
 
+
     def _item_lookup_response(self, *args, **kwargs):
-        """
-        Query amazon for item lookup
-        
-        Arguments:
-        ----------
-        0   ItemId(s)       csv string of item id(s)
-
-        kwargs are fed directly into bottlenose
-
-        """
         if args:
             # make sure kwargs[ItemId] is empty before storing new value
             item_id = kwargs.get("ItemId", None)
@@ -282,20 +394,18 @@ class AmazonBookInterface(XMLInterface):
             else:
                 raise RuntimeError("Cannot have keyword ItemId AND provide " +
                                    "an argument")
+        if len(args) > 1:
+            # make sure kwargs[ResponseGroup] is empty before storing new val
+            response_group = kwargs.get("ResponseGroup", None)
+            if response_group is None:
+                kwargs["ResponseGroup"] = args[1]
+            else:
+                raise RuntimeError("Cannot have keyword ResponseGroup AND " + 
+                                   "provide a second argument")
         return _amazon().ItemLookup(**kwargs)
 
 
     def _item_search_response(self, *args, **kwargs):
-        """
-        Query amazon for item search
-        
-        Arguments:
-        ----------
-        0   Keywords    keyword search string
-
-        Keywords are fed directly into bottlenose.
-
-        """
         kwargs['SearchIndex'] = kwargs.get('SearchIndex', self._search_index)
         if args:
             # make sure kwargs[Keywords] is empty before storing new value
@@ -305,6 +415,14 @@ class AmazonBookInterface(XMLInterface):
             else:
                 raise RuntimeError("Cannot have keyword 'Keywords' AND " +
                                    "provide an argument")
+        if len(args) > 1:
+            # make sure kwargs[ResponseGroup] is empty before storing new val
+            response_group = kwargs.get("ResponseGroup", None)
+            if response_group is None:
+                kwargs["ResponseGroup"] = args[1]
+            else:
+                raise RuntimeError("Cannot have keyword ResponseGroup AND " + 
+                                   "provide a second argument")
         return _amazon().ItemSearch(**kwargs)
 
 
