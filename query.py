@@ -8,6 +8,9 @@ from django.db.models.query import QuerySet
 from bserial.settings import DEFAULT_CACHE
 from bserial.util import merge_objects
 
+
+
+
 class CacheQuerySet(QuerySet):
     """
     Query set for a model that relies on external api calls as well.
@@ -23,11 +26,13 @@ class CacheQuerySet(QuerySet):
         self.cache = cache
         self.timeout = timeout
 
+
     def _cache_key(self, obj):
         """construct the cache key of an appropriate object"""
         # use color separator, as it's an illegal character in class name
         ct = ContentType.objects.get_for_model(self.model)
         return "%s,%s,%s" % (ct.app_label, ct.name, obj.pk)
+
 
     def cache_add(self, obj, timeout=None, passive=False):
         """store an object in the cache for later retrieval"""
@@ -49,6 +54,7 @@ class CacheQuerySet(QuerySet):
         # cache pickled object
         self.cache.set(key, obj, timeout)
 
+
     def _cache_get(self, obj, passive=False):
         """retrieve object from cache, if any, and merge data"""
         key = self._cache_key(obj)
@@ -59,6 +65,7 @@ class CacheQuerySet(QuerySet):
             else:
                 return merge_objects(obj, cached_obj)
         return obj
+
 
     def __getitem__(self, k):
         """
@@ -73,11 +80,38 @@ class CacheQuerySet(QuerySet):
             return self._cache_get(out)
         return out
     
+
+
+
 class AmazonQuerySet(CacheQuerySet):
     """
     QuerySet that can retrieve items from amazon api
 
     """
-    pass
 
+    def __init__(self, model=None, query=None, using=None, 
+                 cache=DEFAULT_CACHE, timeout=30):
+        super(AmazonQuerySet, self).__init__(model, query, using, cache, 
+                                            timeout)
+        # deferred import because bserial.serial uses Book model
+        AmazonBookInterface = __import__(
+                'bserial.serial',
+                globals(), locals(),
+                ['AmazonBookInterface'], -1
+        ).AmazonBookInterface
+        self.amazon = AmazonBookInterface()
 
+        
+    def lookup(self, *args, **kwargs):
+        books = self.amazon.lookup(*args, **kwargs)
+        for book in books:
+            self.cache_add(book)
+        return books
+    
+
+    def search(self, *args, **kwargs):
+        books = self.amazon.search(*args, **kwargs)
+        for book in books:
+            self.cache_add(book)
+        return books
+    

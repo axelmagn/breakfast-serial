@@ -7,8 +7,14 @@ from bserial.models import Book
 from bserial.settings import (AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY,
                                AMAZON_ASSOC_TAG)
 
+
+
+
 def _amazon():
     return Amazon(AMAZON_ACCESS_KEY_ID, AMAZON_SECRET_KEY, AMAZON_ASSOC_TAG)
+
+
+
 
 class XMLMapping(object):
     """
@@ -74,11 +80,15 @@ class ValueMapping(XMLMapping):
         return xpath.findvalue(self.selector, node)
 
 
+
+
 class BooleanMapping(XMLMapping):
     """Interprets value as boolean"""
     def parse(self, node):
         selection = xpath.findvalue(self.selector, node)
         return selection.lower() in ["true", "1", 'yes', 'y']
+
+
 
 
 class MultiValueMapping(XMLMapping):
@@ -92,11 +102,15 @@ class MultiValueMapping(XMLMapping):
         return [self.valmap.parse(el) for el in selection]
 
 
+
+
 class CSVMapping(MultiValueMapping):
     """Return list of values as comma separated string"""
 
     def parse_selection(self, selection):
         return ",".join(super(CSVMapping, self).parse_selection(selection))
+
+
 
 
 class DictMapping(XMLMapping):
@@ -153,7 +167,6 @@ class XMLInterface(object):
         item_root(selector)="/"  selector for individual items
         map_strings(bool)=True   treat class strings as selectors
         map_default(class)=True  class to use for string selectors
-
 
         """
 
@@ -218,6 +231,7 @@ class XMLInterface(object):
         doc should typically be an element selected by item_root
 
         """
+        # import pdb; pdb.set_trace()     #DEBUG
         # identify unique fields in the model
         unique_fields = [field.name for field in self.model._meta.fields
                          if field.unique]
@@ -234,7 +248,7 @@ class XMLInterface(object):
                 result = attrs[key].parse(doc)
                 # omit empty results, but include False values
                 if result not in[None, [], '']:
-                    setattr(self, key, result)
+                    setattr(out, key, result)
         return out
 
 
@@ -245,6 +259,7 @@ class XMLInterface(object):
             # parse model for item element
             out.append(self.parse_model(item))
         return out
+
 
 
 class AmazonBookInterface(XMLInterface):
@@ -311,7 +326,7 @@ class AmazonBookInterface(XMLInterface):
     )
     # ResponseGroup:    EditorialReview
     description = ValueMapping("EditorialReviews/EditorialReview[1]/Content" +
-                               '[../Source/text() = "Product Description"]'
+                               '[../Source/text() = "Product Description"]')
 
 
     def parse(self, *args, **kwargs):
@@ -424,5 +439,3 @@ class AmazonBookInterface(XMLInterface):
                 raise RuntimeError("Cannot have keyword ResponseGroup AND " + 
                                    "provide a second argument")
         return _amazon().ItemSearch(**kwargs)
-
-
