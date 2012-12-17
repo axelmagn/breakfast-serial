@@ -1,12 +1,11 @@
 # stdlib imports
 # django imports
-from django.contrib.contenttypes.models import ContentType
 from django.db.models.query import QuerySet
 
 # 3rd party imports
 # local imports
 from bserial.settings import DEFAULT_CACHE
-from bserial.util import merge_objects
+from bserial.util import merge_objects, get_cache_key
 
 
 
@@ -28,10 +27,7 @@ class CacheQuerySet(QuerySet):
 
 
     def _cache_key(self, obj):
-        """construct the cache key of an appropriate object"""
-        # use color separator, as it's an illegal character in class name
-        ct = ContentType.objects.get_for_model(self.model)
-        return "%s,%s,%s" % (ct.app_label, ct.name, obj.pk)
+        return get_cache_key(obj)
 
 
     def cache_add(self, obj, timeout=None, passive=False):
@@ -88,6 +84,7 @@ class AmazonQuerySet(CacheQuerySet):
     QuerySet that can retrieve items from amazon api
 
     """
+    _max_results = 10
 
     def __init__(self, model=None, query=None, using=None, 
                  cache=DEFAULT_CACHE, timeout=30):
@@ -103,7 +100,14 @@ class AmazonQuerySet(CacheQuerySet):
 
         
     def lookup(self, *args, **kwargs):
+        # if no id's specified, use books in this queryset
+        if not args and not kwargs.has_key("ItemId"):
+            kwargs["ItemId"] = [
+                    book.asin for book in self.all()[:self._max_results]
+            ]
+        # perform lookup.  books is a list.  no results => empty
         books = self.amazon.lookup(*args, **kwargs)
+        # cache results
         for book in books:
             self.cache_add(book)
         return books
@@ -114,4 +118,3 @@ class AmazonQuerySet(CacheQuerySet):
         for book in books:
             self.cache_add(book)
         return books
-    

@@ -4,6 +4,8 @@ Utility objects and methods for BreakfastSerial
 """
 # stdlib imports
 from copy import deepcopy
+# django imports
+from django.contrib.contenttypes.models import ContentType
 
 def merge_objects(*args):
     """
@@ -26,3 +28,9 @@ def merge_objects(*args):
                     not hasattr(tgt, property)):
                 setattr(tgt, property, getattr(src, property))
     return tgt
+
+def get_cache_key(obj):
+    """construct the cache key of an appropriate object"""
+    # use comma separator, as it's an illegal character in class name
+    ct = ContentType.objects.get_for_model(obj)
+    return "%s,%s,%s" % (ct.app_label, ct.name, obj.pk)
