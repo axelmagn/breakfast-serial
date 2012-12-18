@@ -39,7 +39,11 @@ class XMLMapping(object):
         # retrieve xpath selection
         selection = xpath.find(self.selector, node)
         # feed into parse_selection before returning
-        return self.parse_selection(selection)
+        selection = self.parse_selection(selection)
+        if hasattr(self, "k"):
+            selection = selection[self.k]
+        return selection
+
 
     def parse_selection(self, selection):
         """
@@ -56,6 +60,10 @@ class XMLMapping(object):
 
     def __unicode__(self):
         return self.selector
+
+    def __getitem__(self, k):
+        self.k = k
+        return self
 
 
 
@@ -141,6 +149,8 @@ class DictMapping(XMLMapping):
                 if value not in [None, [], '']:
                     attrs[attr] = value
             out.append(attrs)
+        if hasattr(self, "k"):
+            out = out[self.k]
         return out
 
 
@@ -294,6 +304,9 @@ class AmazonBookInterface(XMLInterface):
     title = "ItemAttributes/Title"
     author = CSVMapping("ItemAttributes/Author")
     # ResponseGroup:    Images
+    cover_lg_url = ValueMapping("LargeImage/URL")
+    cover_md_url = ValueMapping("MediumImage/URL")
+    cover_sm_url = ValueMapping("SmallImage/URL")
     small_image = DictMapping(
             XMLMapping("SmallImage"),
             {
@@ -303,7 +316,7 @@ class AmazonBookInterface(XMLInterface):
                 "width":            _img_width,
                 "width_units":      _img_wunits,
             }
-    )
+    )[0]
     medium_image = DictMapping(
             XMLMapping("MediumImage"),
             {
@@ -313,7 +326,7 @@ class AmazonBookInterface(XMLInterface):
                 "width":            _img_width,
                 "width_units":      _img_wunits,
             }
-    )
+    )[0]
     large_image = DictMapping(
             XMLMapping("LargeImage"),
             {
@@ -323,7 +336,7 @@ class AmazonBookInterface(XMLInterface):
                 "width":            _img_width,
                 "width_units":      _img_wunits,
             }
-    )
+    )[0]
     # ResponseGroup:    EditorialReview
     description = ValueMapping("EditorialReviews/EditorialReview[1]/Content" +
                                '[../Source/text() = "Product Description"]')

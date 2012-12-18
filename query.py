@@ -2,7 +2,6 @@
 # django imports
 from django.contrib.contenttypes.models import ContentType
 from django.db.models.query import QuerySet
-
 # 3rd party imports
 # local imports
 from bserial.settings import DEFAULT_CACHE
@@ -66,6 +65,10 @@ class CacheQuerySet(QuerySet):
                 return merge_objects(obj, cached_obj)
         return obj
 
+    def get(self, *args, **kwargs):
+        out = super(CacheQuerySet, self).get(*args, **kwargs)
+        return self._cache_get(out)
+
 
     def __getitem__(self, k):
         """
@@ -94,11 +97,7 @@ class AmazonQuerySet(CacheQuerySet):
         super(AmazonQuerySet, self).__init__(model, query, using, cache, 
                                             timeout)
         # deferred import because bserial.serial uses Book model
-        AmazonBookInterface = __import__(
-                'bserial.serial',
-                globals(), locals(),
-                ['AmazonBookInterface'], -1
-        ).AmazonBookInterface
+        from bserial.serial import AmazonBookInterface
         self.amazon = AmazonBookInterface()
 
         
@@ -114,4 +113,3 @@ class AmazonQuerySet(CacheQuerySet):
         for book in books:
             self.cache_add(book)
         return books
-    
