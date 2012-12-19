@@ -18,6 +18,7 @@ class Book(models.Model):
     cover_md_url = models.TextField(null=True, blank=True)
     cover_sm_url = models.TextField(null=True, blank=True)
 
+    description = models.TextField(null=True, blank=True)
 
     objects = CacheManager()
     amazon = AmazonManager()
