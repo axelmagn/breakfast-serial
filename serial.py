@@ -67,6 +67,10 @@ class XMLMapping(object):
     def __unicode__(self):
         return self.selector
 
+    def __getitem__(self, k):
+        self.k = k
+        return self
+
 
 
 
@@ -151,8 +155,9 @@ class DictMapping(XMLMapping):
                 if value not in [None, [], '']:
                     attrs[attr] = value
             out.append(attrs)
-        if hasattr(self, 'k'):
-            return out[self.k]
+
+        if hasattr(self, "k") and out != []:
+            out = out[self.k]
         return out
 
 
@@ -307,6 +312,9 @@ class AmazonBookInterface(XMLInterface):
     author = CSVMapping("ItemAttributes/Author")
     detail_page_url = "DetailPageURL"
     # ResponseGroup:    Images
+    cover_lg_url = ValueMapping("LargeImage/URL")
+    cover_md_url = ValueMapping("MediumImage/URL")
+    cover_sm_url = ValueMapping("SmallImage/URL")
     small_image = DictMapping(
             XMLMapping("SmallImage"),
             {
