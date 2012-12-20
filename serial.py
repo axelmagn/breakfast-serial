@@ -40,7 +40,7 @@ class XMLMapping(object):
         selection = xpath.find(self.selector, node)
         # feed into parse_selection before returning
         selection = self.parse_selection(selection)
-        if hasattr(self, "k"):
+        if hasattr(self, "k") and selection != []:
             selection = selection[self.k]
         return selection
 
@@ -149,7 +149,7 @@ class DictMapping(XMLMapping):
                 if value not in [None, [], '']:
                     attrs[attr] = value
             out.append(attrs)
-        if hasattr(self, "k"):
+        if hasattr(self, "k") and out != []:
             out = out[self.k]
         return out
 
