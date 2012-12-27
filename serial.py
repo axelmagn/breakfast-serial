@@ -115,9 +115,6 @@ class MultiValueMapping(XMLMapping):
     def parse_selection(self, selection):
         return [self.valmap.parse(el) for el in selection]
 
-
-
-
 class CSVMapping(MultiValueMapping):
     """Return list of values as comma separated string"""
 
