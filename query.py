@@ -1,4 +1,5 @@
 # stdlib imports
+from copy import deepcopy
 # django imports
 from django.db.models.query import QuerySet
 # 3rd party imports
@@ -110,6 +111,35 @@ class AmazonQuerySet(CacheQuerySet):
         for book in books:
             self.cache_add(book)
         return books
+
+    def batch_lookup(self, *args, **kwargs):
+        """
+        DANGEROUS!
+        same as lookup, but performs multiple queries for large counts
+        
+        It will keep sending amazon api requests, regardless of how many books
+        are out there.
+        """
+        # if no id's specified, use books in this queryset
+        if not args and not kwargs.has_key("ItemId"):
+            kwargs["ItemId"] = [
+                    book.asin for book in self.all()
+            ]
+        books = []
+        # iterate through item ids in steps, performing a lookup for each
+        for seg_index in xrange(0,len(kwargs["ItemId"]), self._max_results):
+            seg_ciel = seg_index + self._max_results
+            seg_ids = kwargs["ItemId"][seg_index:seg_ciel]
+            seg_kwargs = deepcopy(kwargs)
+            seg_kwargs["ItemId"] = seg_ids
+            seg_books = self.amazon.lookup(*args, **seg_kwargs)
+            books += seg_books
+        # cache results
+        for book in books:
+            self.cache_add(book)
+        return books
+
+            
     
 
     def search(self, *args, **kwargs):
